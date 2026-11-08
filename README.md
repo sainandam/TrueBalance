@@ -154,11 +154,34 @@ npm run dev
 ```
 - Web Application: `http://localhost:5173/`
 
-*(Alternatively, the compiled production application is served directly by the backend at `http://127.0.0.1:8000/app`)*
+*(Alternatively, the compiled production application is served directly by the backend at `http://127.0.0.1:8000/` or `http://127.0.0.1:8000/app`)*
 
 ---
 
-## 6. Interactive Testing & Demonstrator Walkthrough
+## 6. Production Cloud Deployment (Live in 2 Minutes)
+
+TrueBalance is containerized with a production multi-stage `Dockerfile` and a `render.yaml` blueprint for 1-click deployment on **Render.com** (or Railway / Fly.io / Koyeb).
+
+### Deploying to Render.com (100% Free Tier):
+1. Create a free account at [render.com](https://render.com) and log in with your GitHub account.
+2. Click **"New +"** &rarr; **"Web Service"**.
+3. Select the repository: **`sainandam/TrueBalance`**.
+4. Render automatically detects the root `Dockerfile`:
+   - **Name**: `truebalance`
+   - **Region**: `Singapore` (recommended: lowest latency to Neon DB)
+   - **Branch**: `main`
+   - **Plan**: `Free` ($0/month)
+5. Under **Environment Variables**, set:
+   - `DATABASE_URL` = *(Your Neon Cloud PostgreSQL connection string)*
+   - `MIGRATION_DATABASE_URL` = *(Your Neon Cloud PostgreSQL connection string)*
+   - `APP_ENV` = `production`
+6. Click **"Deploy Web Service"**.
+7. In ~2 minutes, Render builds the React frontend, packages FastAPI with Uvicorn, and assigns a live public URL:  
+   👉 **`https://truebalance-<your-subdomain>.onrender.com/`** (both API and React UI served seamlessly with automatic free SSL).
+
+---
+
+## 7. Interactive Testing & Demonstrator Walkthrough
 
 ### Scenario A: Interactive Concurrency Lab (UI & Terminal)
 1. In the Web UI, open the **⚡ Concurrency Lab** tab.
@@ -194,7 +217,7 @@ python -m pytest tests/test_concurrency.py -k test_50_concurrent_withdrawals_ove
 
 ---
 
-## 7. Deliverables Checklist
+## 8. Deliverables Checklist
 
 - [x] **Money Integrity & Security (35 Marks)**: Integer paise, zero-sum double-entry, deterministic row locks, PL/pgSQL immutability triggers, SHA-256 hash chains, 50-worker race condition proof.
 - [x] **THREATS.md (15 Marks)**: 15 documented financial threats mapped 1:1 with automated test functions in `tests/`.
