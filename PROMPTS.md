@@ -118,4 +118,4 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
      - Exactly 40 durable refusal attempts logged in `transaction_attempts`.
      - 10 interleaved concurrent deposits and withdrawals verified for zero balance drift.
 - **Verification Result**:
-  All 37 tests passed across all 7 test suites (`test_concurrency.py`, `test_idempotency.py`, `test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: (tracked below).
+  All 37 tests passed across all 7 test suites (`test_concurrency.py`, `test_idempotency.py`, `test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: `305a1a0`.
