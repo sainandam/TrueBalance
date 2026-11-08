@@ -148,3 +148,53 @@ This document tracks security threats, attack vectors, defensive architectures, 
   - `test_withdrawal_success_and_hash_chain` (PASSED: Hash chain linkage and zero-sum verified)
   - `test_transfer_success_and_money_conservation` (PASSED: Combined account balance strictly conserved)
 - **Remaining Accepted Risk**: None at the ledger layer; invariant is enforced mathematically and atomically.
+
+---
+
+### Threat 11: Idempotency Key Replay Double-Spending Attack
+- **Category**: Transaction Integrity / Idempotency
+- **Threat Description**: A network retry, flaky mobile connection, or malicious actor re-submits the exact same transaction request (deposit, withdrawal, or transfer) multiple times to execute duplicate money movements or drain balances twice.
+- **Attack Vector**: Calling `POST /api/v1/transactions/transfers` 10 times in rapid succession with identical payloads.
+- **Engineering Defense**:
+  1. Mandatory or optional `Idempotency-Key` header mapped in `idempotency_keys` table with a `UniqueConstraint("user_id", "key")`.
+  2. First request transitions key status to `processing`.
+  3. Once transaction completes, the key transitions to `succeeded`, storing the exact `response_body` JSON and `transaction_id`.
+  4. Subsequent replays with the identical key detect `status == 'succeeded'` and immediately return the cached response without touching account balances or ledger entries.
+  5. Concurrent in-flight duplicates with the same key detect `status == 'processing'` and are rejected with HTTP 409 Conflict.
+- **Automated Verification Test**: `backend/tests/test_idempotency.py`
+  - `test_deposit_with_idempotency_key_replay_returns_cached_response` (PASSED: balance credited once)
+  - `test_transfer_with_idempotency_key_replay_does_not_double_spend` (PASSED: balance debited once)
+  - `test_concurrent_duplicate_requests_with_same_idempotency_key` (PASSED: exactly 1 transaction executed out of 10 concurrent calls)
+- **Remaining Accepted Risk**: Client forgetting to pass an `Idempotency-Key`. Mitigated by client SDK enforcing idempotency keys on mutating endpoints.
+
+---
+
+### Threat 12: Idempotency Key Payload Tampering / Parameter Substitution
+- **Category**: Fraud Prevention / Parameter Tampering
+- **Threat Description**: An attacker captures a valid `Idempotency-Key` from a small transaction (e.g. ₹10) and attempts to reuse it for a larger transfer (e.g. ₹10,000) or to a different destination account, hoping the server will misattribute or execute the new payload under the approved key.
+- **Attack Vector**: Submitting `POST /api/v1/transactions/transfers` with a previously used key but modified `amount_paise` or `target_account_id`.
+- **Engineering Defense**:
+  1. `IdempotencyService.compute_request_hash()` computes a SHA-256 fingerprint over the canonical JSON representation of `(endpoint, sorted payload)`.
+  2. The canonical hash is stored in `idempotency_keys.request_hash`.
+  3. On replay, if the incoming request hash does not match `existing.request_hash`, the request is immediately rejected with HTTP 422 Unprocessable Content (`Idempotency key reused with different request payload or endpoint.`).
+- **Automated Verification Test**: `backend/tests/test_idempotency.py`
+  - `test_reusing_idempotency_key_with_different_payload_is_rejected` (PASSED: rejected with HTTP 422)
+- **Remaining Accepted Risk**: None; SHA-256 hash collision resistance prevents parameter manipulation.
+
+---
+
+### Threat 13: Race Condition Overdraft via Mass Concurrent Withdrawals (50 Parallel Requests Attack)
+- **Category**: Financial Integrity / Concurrency Control
+- **Threat Description**: An account with ₹1,000 balance is targeted by 50 concurrent withdrawal requests of ₹100 each from multiple distributed clients/threads. In a vulnerable system with race conditions (Read-Modify-Write), multiple threads read the positive balance simultaneously, all approve the withdrawal, and the account balance goes severely negative (-₹4,000), causing massive financial loss.
+- **Attack Vector**: 50 parallel threads firing simultaneous HTTP `POST /api/v1/transactions/withdrawals` requests with distinct client request IDs.
+- **Engineering Defense**:
+  1. Immediate Row-Level Locking (`SELECT ... FOR UPDATE`): The customer account is locked atomically at the database kernel level upon entering the transaction.
+  2. PostgreSQL serializes all 50 concurrent transactions strictly one-by-one.
+  3. Real-time balance check (`balance + overdraft >= amount`):
+     - The first 10 requests evaluate with positive available funds, deduct ₹100, update projected balance, and commit atomically.
+     - The remaining 40 requests evaluate against a balance of ₹0, fail the condition, record a durable refusal in `transaction_attempts` (`reason_code='INSUFFICIENT_FUNDS'`), and return HTTP 422 Unprocessable Content.
+  4. Final account balance remains strictly ₹0 (0 paise), with 0 overdraft and zero-sum ledger conservation.
+- **Automated Verification Test**: `backend/tests/test_concurrency.py`
+  - `test_50_concurrent_withdrawals_overdraft_prevention` (PASSED: Exactly 10 succeed, exactly 40 fail, final balance is ₹0, 40 durable refusal attempts logged in DB)
+  - `test_concurrent_interleaved_deposits_and_withdrawals` (PASSED: 10 interleaved concurrent deposits/withdrawals maintain exact balance)
+- **Remaining Accepted Risk**: High lock contention during burst traffic. Mitigated by direct PostgreSQL connections and low transaction duration.

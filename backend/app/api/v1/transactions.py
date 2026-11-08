@@ -1,5 +1,6 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, status
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.orm import Session
 
 from app.security.deps import get_db, get_current_user
@@ -23,11 +24,12 @@ router = APIRouter(prefix="/transactions", tags=["Financial Transactions & Ledge
 )
 def deposit_funds(
     req: DepositRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Execute double-entry deposit from System World clearinghouse into customer account."""
-    return TransactionService.deposit(db, current_user, req)
+    return TransactionService.deposit(db, current_user, req, idempotency_key=idempotency_key)
 
 
 @router.post(
@@ -38,11 +40,12 @@ def deposit_funds(
 )
 def withdraw_funds(
     req: WithdrawalRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Execute double-entry withdrawal from customer account into System World clearinghouse."""
-    return TransactionService.withdraw(db, current_user, req)
+    return TransactionService.withdraw(db, current_user, req, idempotency_key=idempotency_key)
 
 
 @router.post(
@@ -53,11 +56,12 @@ def withdraw_funds(
 )
 def transfer_funds(
     req: TransferRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Execute double-entry internal transfer between two accounts with deterministic row locking."""
-    return TransactionService.transfer(db, current_user, req)
+    return TransactionService.transfer(db, current_user, req, idempotency_key=idempotency_key)
 
 
 @router.get(

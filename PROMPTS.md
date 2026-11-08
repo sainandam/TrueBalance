@@ -88,3 +88,34 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
   5. Authored comprehensive test suite `backend/tests/test_financial_engine.py` with 8 tests, including a multi-threaded parallel cross-transfer deadlock stress test.
 - **Verification Result**:
   All 31 tests passed across the full test suite (`test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: `3e4e19d`.
+
+---
+
+### Record 5: 2026-11-08 — Module 5 Idempotency Engine & 50 Concurrent Withdrawals Stress Defense
+- **Date**: 2026-11-08T09:12:00+05:30
+- **What Was Asked**:
+  Implement Module 5: Idempotency & Concurrency Hardening (P0 — 35 Marks Integrity/Security). Must implement SHA-256 canonical payload hashing, detection of concurrent duplicate requests (HTTP 409 Conflict), cached response replays, payload tampering rejection (HTTP 422), and pass the flagship hackathon challenge test: 50 concurrent withdrawals of ₹100 against an account with ₹1,000 balance, verifying exactly 10 succeed, 40 fail with Insufficient Funds, final balance is strictly ₹0, and 40 refusal attempts are durably logged.
+- **What AI Initially Generated / Encountered**:
+  1. Neon Serverless PgBouncer connection pooler (`-pooler`) in `DATABASE_URL` closed connections unexpectedly when multiple concurrent workers opened `SELECT ... FOR UPDATE` row locks, because PgBouncer in transaction-pooling mode does not support extended row-level locking across worker queues.
+  2. Sequential duplicate queries: `TransactionService` queried `Account` without a lock before locking it with `with_for_update()`, causing SQLAlchemy session identity map caching of stale balances during high-frequency concurrent deposits.
+  3. `TestClient` in `test_idempotency.py` initially looked for `"session_token"` instead of `"token"` in the auth login response.
+- **What Was Corrected / Fixed**:
+  1. Implemented `IdempotencyService` in `backend/app/services/idempotency_service.py`:
+     - Canonical SHA-256 request payload hashing (`compute_request_hash`) over `(endpoint, sorted payload)`.
+     - Detects in-flight concurrent duplicates and raises HTTP 409 Conflict.
+     - Atomically transitions key from `processing` -> `succeeded` or `refused`.
+     - Returns cached responses for identical replays without executing double transactions.
+     - Rejects altered payloads under reused keys with HTTP 422 Unprocessable Content.
+  2. Switched application database connection to direct Neon PostgreSQL instance (without `-pooler`), tuned SQLAlchemy connection pooling (`pool_size=10`, `max_overflow=15`, `pool_recycle=300`) to natively support concurrent ACID row locks.
+  3. Streamlined `TransactionService` (`deposit`, `withdraw`, `transfer`):
+     - Immediate row-level locking (`SELECT ... FOR UPDATE`) at query entry, completely eliminating stale balance reads from the SQLAlchemy identity map.
+     - Unified durable attempt recording and idempotency failure caching in the exception handling path.
+  4. Authored `backend/tests/test_idempotency.py` (4 tests) verifying replay protection, duplicate prevention, payload tampering defense, and concurrent duplicate collisions.
+  5. Authored `backend/tests/test_concurrency.py` (2 tests), including the 50 simultaneous withdrawals stress test:
+     - 50 concurrent threads simultaneously attempt to withdraw ₹100 from an account with ₹1,000.
+     - Exactly 10 succeed (HTTP 201), exactly 40 fail (HTTP 422 Insufficient Funds).
+     - Final balance is strictly ₹0.
+     - Exactly 40 durable refusal attempts logged in `transaction_attempts`.
+     - 10 interleaved concurrent deposits and withdrawals verified for zero balance drift.
+- **Verification Result**:
+  All 37 tests passed across all 7 test suites (`test_concurrency.py`, `test_idempotency.py`, `test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: (tracked below).

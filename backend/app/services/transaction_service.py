@@ -1,7 +1,7 @@
 """
 Transaction service implementing deposits, withdrawals, and internal transfers
 with row-level locking, deterministic lock ordering (deadlock prevention),
-negative-balance prevention, and durable attempt tracking.
+negative-balance prevention, idempotency key guarantees, and durable attempt tracking.
 """
 
 from uuid import UUID, uuid4
@@ -22,6 +22,7 @@ from app.schemas.transaction import (
     LedgerEntryResponse,
 )
 from app.services.ledger_service import LedgerService
+from app.services.idempotency_service import IdempotencyService
 
 
 class TransactionService:
@@ -66,158 +67,180 @@ class TransactionService:
         db: Session, caller: User, req: DepositRequest, idempotency_key: Optional[str] = None
     ) -> TransactionResponse:
         """Execute a deposit from the external world into a customer account."""
-        target_acc = db.query(Account).filter_by(id=req.target_account_id).first()
-        if not target_acc or target_acc.is_system:
-            TransactionService._record_attempt(
-                db, caller.id, "deposit", None, req.target_account_id, req.amount_paise, "refused", "ACCOUNT_NOT_FOUND"
+        key_record = None
+        if idempotency_key:
+            cached, key_record = IdempotencyService.check_or_start(
+                db, caller.id, idempotency_key, "/api/v1/transactions/deposits", req.model_dump()
             )
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target account not found.")
+            if cached:
+                return TransactionResponse.model_validate(cached)
 
-        if target_acc.status != "active":
-            TransactionService._record_attempt(
-                db, caller.id, "deposit", None, req.target_account_id, req.amount_paise, "refused", "ACCOUNT_FROZEN"
-            )
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Target account is {target_acc.status}. Deposits are forbidden.",
-            )
+        try:
+            # Row lock on target customer account immediately
+            locked_target = db.query(Account).filter_by(id=req.target_account_id).with_for_update().first()
+            if not locked_target or locked_target.is_system:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target account not found.")
 
-        # Permission check: Caller must be admin or member with can_deposit
-        if caller.role != "admin":
-            mem = db.query(AccountMember).filter_by(account_id=target_acc.id, user_id=caller.id).first()
-            if not mem or not mem.can_deposit:
-                TransactionService._record_attempt(
-                    db, caller.id, "deposit", None, req.target_account_id, req.amount_paise, "refused", "PERMISSION_DENIED"
-                )
-                db.commit()
+            if locked_target.status != "active":
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Caller does not have deposit authorization for this account.",
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Target account is {locked_target.status}. Deposits are forbidden.",
                 )
 
-        sys_world = TransactionService._get_system_world_account(db)
+            # Permission check: Caller must be admin or member with can_deposit
+            if caller.role != "admin":
+                mem = db.query(AccountMember).filter_by(account_id=locked_target.id, user_id=caller.id).first()
+                if not mem or not mem.can_deposit:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Caller does not have deposit authorization for this account.",
+                    )
 
-        # Deterministic Lock Ordering on Accounts
-        first_id, second_id = sorted([sys_world.id, target_acc.id])
-        acc1 = db.query(Account).filter_by(id=first_id).with_for_update().first()
-        acc2 = db.query(Account).filter_by(id=second_id).with_for_update().first()
+            sys_world = TransactionService._get_system_world_account(db)
 
-        locked_sys = acc1 if acc1.id == sys_world.id else acc2
-        locked_target = acc1 if acc1.id == target_acc.id else acc2
+            # Double-entry postings: Debit System World (-amount), Credit Customer (+amount)
+            postings = [
+                (sys_world, -req.amount_paise),
+                (locked_target, req.amount_paise),
+            ]
+            tx, entries = LedgerService.post_double_entry(
+                db,
+                transaction_type="deposit",
+                initiator_user_id=caller.id,
+                reason=req.reason,
+                postings=postings,
+            )
 
-        # Double-entry postings: Debit System World (-amount), Credit Customer (+amount)
-        postings = [
-            (locked_sys, -req.amount_paise),
-            (locked_target, req.amount_paise),
-        ]
-        tx, entries = LedgerService.post_double_entry(
-            db,
-            transaction_type="deposit",
-            initiator_user_id=caller.id,
-            reason=req.reason,
-            postings=postings,
-        )
+            TransactionService._record_attempt(
+                db, caller.id, "deposit", None, locked_target.id, req.amount_paise, "accepted", None, idempotency_key
+            )
 
-        TransactionService._record_attempt(
-            db, caller.id, "deposit", None, locked_target.id, req.amount_paise, "accepted", None, idempotency_key
-        )
-        db.commit()
+            response = TransactionResponse(
+                transaction_id=tx.id,
+                transaction_type=tx.transaction_type,
+                reason=tx.reason,
+                created_at=tx.created_at,
+                entries=[LedgerEntryResponse.model_validate(e) for e in entries],
+                target_balance_paise=locked_target.balance_paise,
+            )
 
-        return TransactionResponse(
-            transaction_id=tx.id,
-            transaction_type=tx.transaction_type,
-            reason=tx.reason,
-            created_at=tx.created_at,
-            entries=[LedgerEntryResponse.model_validate(e) for e in entries],
-            target_balance_paise=locked_target.balance_paise,
-        )
+            if key_record:
+                IdempotencyService.complete(db, key_record, tx.id, response.model_dump(mode="json"))
+
+            db.commit()
+            return response
+        except HTTPException as exc:
+            detail_str = str(exc.detail) if hasattr(exc, "detail") else str(exc)
+            reason = "REFUSED"
+            if exc.status_code == 404:
+                reason = "ACCOUNT_NOT_FOUND"
+            elif "not active" in detail_str or "forbidden" in detail_str:
+                reason = "ACCOUNT_FROZEN"
+            elif exc.status_code == 403:
+                reason = "PERMISSION_DENIED"
+
+            TransactionService._record_attempt(
+                db, caller.id, "deposit", None, req.target_account_id, req.amount_paise, "refused", reason, idempotency_key
+            )
+            if key_record:
+                IdempotencyService.fail(db, key_record, detail_str)
+            db.commit()
+            raise
 
     @staticmethod
     def withdraw(
         db: Session, caller: User, req: WithdrawalRequest, idempotency_key: Optional[str] = None
     ) -> TransactionResponse:
         """Execute a withdrawal from a customer account to the external clearinghouse."""
-        source_acc = db.query(Account).filter_by(id=req.source_account_id).first()
-        if not source_acc or source_acc.is_system:
-            TransactionService._record_attempt(
-                db, caller.id, "withdrawal", req.source_account_id, None, req.amount_paise, "refused", "ACCOUNT_NOT_FOUND"
+        key_record = None
+        if idempotency_key:
+            cached, key_record = IdempotencyService.check_or_start(
+                db, caller.id, idempotency_key, "/api/v1/transactions/withdrawals", req.model_dump()
             )
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source account not found.")
+            if cached:
+                return TransactionResponse.model_validate(cached)
 
-        if source_acc.status != "active":
-            TransactionService._record_attempt(
-                db, caller.id, "withdrawal", req.source_account_id, None, req.amount_paise, "refused", "ACCOUNT_FROZEN"
-            )
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Source account is {source_acc.status}. Withdrawals are forbidden.",
-            )
+        try:
+            # Row-level lock on customer account immediately
+            locked_source = db.query(Account).filter_by(id=req.source_account_id).with_for_update().first()
+            if not locked_source or locked_source.is_system:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source account not found.")
 
-        # Permission check: Caller must be admin or member with can_withdraw
-        if caller.role != "admin":
-            mem = db.query(AccountMember).filter_by(account_id=source_acc.id, user_id=caller.id).first()
-            if not mem or not mem.can_withdraw:
-                TransactionService._record_attempt(
-                    db, caller.id, "withdrawal", req.source_account_id, None, req.amount_paise, "refused", "PERMISSION_DENIED"
-                )
-                db.commit()
+            if locked_source.status != "active":
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Caller does not have withdrawal authorization for this account.",
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Source account is {locked_source.status}. Withdrawals are forbidden.",
                 )
 
-        sys_world = TransactionService._get_system_world_account(db)
+            # Permission check: Caller must be admin or member with can_withdraw
+            if caller.role != "admin":
+                mem = db.query(AccountMember).filter_by(account_id=locked_source.id, user_id=caller.id).first()
+                if not mem or not mem.can_withdraw:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Caller does not have withdrawal authorization for this account.",
+                    )
 
-        # Deterministic Lock Ordering on Accounts
-        first_id, second_id = sorted([sys_world.id, source_acc.id])
-        acc1 = db.query(Account).filter_by(id=first_id).with_for_update().first()
-        acc2 = db.query(Account).filter_by(id=second_id).with_for_update().first()
+            sys_world = TransactionService._get_system_world_account(db)
 
-        locked_sys = acc1 if acc1.id == sys_world.id else acc2
-        locked_source = acc1 if acc1.id == source_acc.id else acc2
+            # Check balance limit: balance + overdraft >= withdrawal amount
+            available = locked_source.balance_paise + locked_source.overdraft_limit_paise
+            if available < req.amount_paise:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Insufficient funds. Available: ₹{available / 100:.2f}, Requested: ₹{req.amount_paise / 100:.2f}.",
+                )
 
-        # Check balance limit: balance + overdraft >= withdrawal amount
-        available = locked_source.balance_paise + locked_source.overdraft_limit_paise
-        if available < req.amount_paise:
+            # Double-entry postings: Debit Customer (-amount), Credit System World (+amount)
+            postings = [
+                (locked_source, -req.amount_paise),
+                (sys_world, req.amount_paise),
+            ]
+            tx, entries = LedgerService.post_double_entry(
+                db,
+                transaction_type="withdrawal",
+                initiator_user_id=caller.id,
+                reason=req.reason,
+                postings=postings,
+            )
+
             TransactionService._record_attempt(
-                db, caller.id, "withdrawal", locked_source.id, None, req.amount_paise, "refused", "INSUFFICIENT_FUNDS"
+                db, caller.id, "withdrawal", locked_source.id, None, req.amount_paise, "accepted", None, idempotency_key
             )
+
+            response = TransactionResponse(
+                transaction_id=tx.id,
+                transaction_type=tx.transaction_type,
+                reason=tx.reason,
+                created_at=tx.created_at,
+                entries=[LedgerEntryResponse.model_validate(e) for e in entries],
+                source_balance_paise=locked_source.balance_paise,
+            )
+
+            if key_record:
+                IdempotencyService.complete(db, key_record, tx.id, response.model_dump(mode="json"))
+
             db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Insufficient funds. Available: ₹{available / 100:.2f}, Requested: ₹{req.amount_paise / 100:.2f}.",
+            return response
+        except HTTPException as exc:
+            detail_str = str(exc.detail) if hasattr(exc, "detail") else str(exc)
+            reason = "REFUSED"
+            if exc.status_code == 404:
+                reason = "ACCOUNT_NOT_FOUND"
+            elif "not active" in detail_str or "forbidden" in detail_str:
+                reason = "ACCOUNT_FROZEN"
+            elif exc.status_code == 403:
+                reason = "PERMISSION_DENIED"
+            elif "Insufficient funds" in detail_str:
+                reason = "INSUFFICIENT_FUNDS"
+
+            TransactionService._record_attempt(
+                db, caller.id, "withdrawal", req.source_account_id, None, req.amount_paise, "refused", reason, idempotency_key
             )
-
-        # Double-entry postings: Debit Customer (-amount), Credit System World (+amount)
-        postings = [
-            (locked_source, -req.amount_paise),
-            (locked_sys, req.amount_paise),
-        ]
-        tx, entries = LedgerService.post_double_entry(
-            db,
-            transaction_type="withdrawal",
-            initiator_user_id=caller.id,
-            reason=req.reason,
-            postings=postings,
-        )
-
-        TransactionService._record_attempt(
-            db, caller.id, "withdrawal", locked_source.id, None, req.amount_paise, "accepted", None, idempotency_key
-        )
-        db.commit()
-
-        return TransactionResponse(
-            transaction_id=tx.id,
-            transaction_type=tx.transaction_type,
-            reason=tx.reason,
-            created_at=tx.created_at,
-            entries=[LedgerEntryResponse.model_validate(e) for e in entries],
-            source_balance_paise=locked_source.balance_paise,
-        )
+            if key_record:
+                IdempotencyService.fail(db, key_record, detail_str)
+            db.commit()
+            raise
 
     @staticmethod
     def transfer(
@@ -225,104 +248,116 @@ class TransactionService:
     ) -> TransactionResponse:
         """
         Execute an atomic internal transfer between two distinct customer accounts.
-        Implements Deterministic Lexicographical Lock Ordering (deadlock-free).
+        Implements Deterministic Lexicographical Lock Ordering (deadlock-free)
+        and Idempotency key preservation.
         """
-        if req.source_account_id == req.target_account_id:
-            TransactionService._record_attempt(
-                db, caller.id, "transfer", req.source_account_id, req.target_account_id, req.amount_paise, "refused", "SELF_TRANSFER_REJECTED"
+        key_record = None
+        if idempotency_key:
+            cached, key_record = IdempotencyService.check_or_start(
+                db, caller.id, idempotency_key, "/api/v1/transactions/transfers", req.model_dump()
             )
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Source and target accounts must be distinct.",
-            )
+            if cached:
+                return TransactionResponse.model_validate(cached)
 
-        source_acc = db.query(Account).filter_by(id=req.source_account_id).first()
-        target_acc = db.query(Account).filter_by(id=req.target_account_id).first()
-
-        if not source_acc or source_acc.is_system or not target_acc or target_acc.is_system:
-            TransactionService._record_attempt(
-                db, caller.id, "transfer", req.source_account_id, req.target_account_id, req.amount_paise, "refused", "ACCOUNT_NOT_FOUND"
-            )
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source or target account not found.")
-
-        if source_acc.status != "active" or target_acc.status != "active":
-            status_reason = f"Source ({source_acc.status})" if source_acc.status != "active" else f"Target ({target_acc.status})"
-            TransactionService._record_attempt(
-                db, caller.id, "transfer", req.source_account_id, req.target_account_id, req.amount_paise, "refused", "ACCOUNT_FROZEN"
-            )
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Transfer rejected: {status_reason} is not active.",
-            )
-
-        # Permission check: Caller must be admin or member with can_transfer on source account
-        if caller.role != "admin":
-            mem = db.query(AccountMember).filter_by(account_id=source_acc.id, user_id=caller.id).first()
-            if not mem or not mem.can_transfer:
-                TransactionService._record_attempt(
-                    db, caller.id, "transfer", req.source_account_id, req.target_account_id, req.amount_paise, "refused", "PERMISSION_DENIED"
-                )
-                db.commit()
+        try:
+            if req.source_account_id == req.target_account_id:
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Caller does not have transfer authorization on the source account.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Source and target accounts must be distinct.",
                 )
 
-        # -------------------------------------------------------------
-        # CRITICAL CONCURRENCY SAFEGUARD:
-        # Deterministic Lexicographical Lock Ordering (Deadlock-Free)
-        # Always lock the smaller UUID first, then the larger UUID.
-        # This eliminates circular wait between concurrent cross-transfers (A->B and B->A).
-        # -------------------------------------------------------------
-        first_id, second_id = sorted([source_acc.id, target_acc.id])
-        acc1 = db.query(Account).filter_by(id=first_id).with_for_update().first()
-        acc2 = db.query(Account).filter_by(id=second_id).with_for_update().first()
+            # -------------------------------------------------------------
+            # CRITICAL CONCURRENCY SAFEGUARD:
+            # Deterministic Lexicographical Lock Ordering (Deadlock-Free)
+            # Always lock the smaller UUID first, then the larger UUID directly.
+            # -------------------------------------------------------------
+            first_id, second_id = sorted([req.source_account_id, req.target_account_id])
+            acc1 = db.query(Account).filter_by(id=first_id).with_for_update().first()
+            acc2 = db.query(Account).filter_by(id=second_id).with_for_update().first()
 
-        locked_source = acc1 if acc1.id == source_acc.id else acc2
-        locked_target = acc1 if acc1.id == target_acc.id else acc2
+            locked_source = acc1 if acc1 and acc1.id == req.source_account_id else acc2
+            locked_target = acc1 if acc1 and acc1.id == req.target_account_id else acc2
 
-        # Check balance limit on source account
-        available = locked_source.balance_paise + locked_source.overdraft_limit_paise
-        if available < req.amount_paise:
+            if not locked_source or locked_source.is_system or not locked_target or locked_target.is_system:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source or target account not found.")
+
+            if locked_source.status != "active" or locked_target.status != "active":
+                status_reason = f"Source ({locked_source.status})" if locked_source.status != "active" else f"Target ({locked_target.status})"
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Transfer rejected: {status_reason} is not active.",
+                )
+
+            # Permission check: Caller must be admin or member with can_transfer on source account
+            if caller.role != "admin":
+                mem = db.query(AccountMember).filter_by(account_id=locked_source.id, user_id=caller.id).first()
+                if not mem or not mem.can_transfer:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Caller does not have transfer authorization on the source account.",
+                    )
+
+            # Check balance limit on source account
+            available = locked_source.balance_paise + locked_source.overdraft_limit_paise
+            if available < req.amount_paise:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Insufficient funds. Available: ₹{available / 100:.2f}, Requested: ₹{req.amount_paise / 100:.2f}.",
+                )
+
+            # Double-entry postings: Debit Source (-amount), Credit Target (+amount)
+            postings = [
+                (locked_source, -req.amount_paise),
+                (locked_target, req.amount_paise),
+            ]
+            tx, entries = LedgerService.post_double_entry(
+                db,
+                transaction_type="transfer",
+                initiator_user_id=caller.id,
+                reason=req.reason,
+                postings=postings,
+            )
+
             TransactionService._record_attempt(
-                db, caller.id, "transfer", locked_source.id, locked_target.id, req.amount_paise, "refused", "INSUFFICIENT_FUNDS"
+                db, caller.id, "transfer", locked_source.id, locked_target.id, req.amount_paise, "accepted", None, idempotency_key
             )
+
+            response = TransactionResponse(
+                transaction_id=tx.id,
+                transaction_type=tx.transaction_type,
+                reason=tx.reason,
+                created_at=tx.created_at,
+                entries=[LedgerEntryResponse.model_validate(e) for e in entries],
+                source_balance_paise=locked_source.balance_paise,
+                target_balance_paise=locked_target.balance_paise,
+            )
+
+            if key_record:
+                IdempotencyService.complete(db, key_record, tx.id, response.model_dump(mode="json"))
+
             db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Insufficient funds. Available: ₹{available / 100:.2f}, Requested: ₹{req.amount_paise / 100:.2f}.",
+            return response
+        except HTTPException as exc:
+            detail_str = str(exc.detail) if hasattr(exc, "detail") else str(exc)
+            reason = "REFUSED"
+            if exc.status_code == 400:
+                reason = "SELF_TRANSFER_REJECTED"
+            elif exc.status_code == 404:
+                reason = "ACCOUNT_NOT_FOUND"
+            elif "not active" in detail_str:
+                reason = "ACCOUNT_FROZEN"
+            elif exc.status_code == 403:
+                reason = "PERMISSION_DENIED"
+            elif "Insufficient funds" in detail_str:
+                reason = "INSUFFICIENT_FUNDS"
+
+            TransactionService._record_attempt(
+                db, caller.id, "transfer", req.source_account_id, req.target_account_id, req.amount_paise, "refused", reason, idempotency_key
             )
-
-        # Double-entry postings: Debit Source (-amount), Credit Target (+amount)
-        postings = [
-            (locked_source, -req.amount_paise),
-            (locked_target, req.amount_paise),
-        ]
-        tx, entries = LedgerService.post_double_entry(
-            db,
-            transaction_type="transfer",
-            initiator_user_id=caller.id,
-            reason=req.reason,
-            postings=postings,
-        )
-
-        TransactionService._record_attempt(
-            db, caller.id, "transfer", locked_source.id, locked_target.id, req.amount_paise, "accepted", None, idempotency_key
-        )
-        db.commit()
-
-        return TransactionResponse(
-            transaction_id=tx.id,
-            transaction_type=tx.transaction_type,
-            reason=tx.reason,
-            created_at=tx.created_at,
-            entries=[LedgerEntryResponse.model_validate(e) for e in entries],
-            source_balance_paise=locked_source.balance_paise,
-            target_balance_paise=locked_target.balance_paise,
-        )
+            if key_record:
+                IdempotencyService.fail(db, key_record, detail_str)
+            db.commit()
+            raise
 
     @staticmethod
     def get_transaction_by_id(db: Session, caller: User, tx_id: UUID) -> TransactionResponse:
