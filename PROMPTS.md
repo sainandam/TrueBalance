@@ -168,4 +168,4 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
   2. `test_tamper_detection_hash_chain_break`: Forges `prev_hash` pointers in SQL. Proves that the verification engine flags `Broken hash chain` / `Orphaned or disconnected entry` and sets `is_valid: False`.
   3. `test_tamper_detection_account_balance_table_drift`: Modifies `accounts.balance_paise` directly in SQL without corresponding ledger entries. Proves that the verification engine flags `Account balance drift` between table balance and ledger sums.
 - **Verification Result**:
-  All 45 tests passed across all 9 test suites (`test_tamper_detection.py`, `test_audit_verification.py`, `test_accounts.py`, `test_auth.py`, `test_concurrency.py`, `test_db_immutability.py`, `test_financial_engine.py`, `test_health.py`, `test_idempotency.py`). Commit: pending.
+  All 45 tests passed across all 9 test suites (`test_tamper_detection.py`, `test_audit_verification.py`, `test_accounts.py`, `test_auth.py`, `test_concurrency.py`, `test_db_immutability.py`, `test_financial_engine.py`, `test_health.py`, `test_idempotency.py`). Commit: `0857a76`.
