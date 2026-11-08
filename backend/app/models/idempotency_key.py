@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from uuid import UUID as PyUUID, uuid4
 
 from sqlalchemy import (
@@ -58,11 +59,11 @@ class IdempotencyKey(Base):
         JSON, nullable=True
     )
 
-    created_at: Mapped[object] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
-    updated_at: Mapped[object] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),

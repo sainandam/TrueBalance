@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from uuid import UUID as PyUUID
 
 from sqlalchemy import (
@@ -49,7 +50,7 @@ class AccountMember(Base):
         Boolean, nullable=False, default=False
     )
 
-    created_at: Mapped[object] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
