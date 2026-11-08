@@ -40,3 +40,4 @@ EXPOSE 8000
 
 # Run migrations (if needed) and start Uvicorn server on dynamic $PORT
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+

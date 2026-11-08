@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
 import { User } from '../types';
+import { CyberPet } from './CyberPet';
 import {
   Shield,
   Lock,
@@ -79,14 +80,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
           </p>
         </div>
 
+        {/* Interactive Animated Cyber Companion */}
+        <CyberPet />
+
         {/* 1-Click Quick Demo Sign-in for Judges */}
         <div className="mb-6 bg-[#050810] p-4 rounded-2xl border border-slate-800/90 shadow-inner">
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between font-mono">
             <span className="flex items-center space-x-1.5 text-emerald-400">
               <Zap className="w-3.5 h-3.5" />
-              <span>Judge Quick-Access (Pre-Seeded)</span>
+              <span>1-Click Evaluation Accounts</span>
             </span>
-            <span className="text-[9px] text-slate-500 font-sans">Click to sign in instantly</span>
+            <span className="text-[9px] text-slate-500 font-sans">Click button to log in directly &rarr;</span>
           </div>
 
           <div className="grid grid-cols-3 gap-2.5">
@@ -94,13 +98,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
               type="button"
               onClick={() => quickLogin('holder@ledgerline.io', 'Holder@12345!')}
               disabled={loading}
-              className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-emerald-950/60 border border-slate-800 hover:border-emerald-500/50 text-left transition group"
+              className="p-3 rounded-xl bg-slate-900/90 hover:bg-emerald-950/70 border border-slate-800 hover:border-emerald-500/60 text-left transition-all duration-200 group shadow-sm flex flex-col justify-between"
             >
-              <div className="text-xs font-bold text-emerald-300 group-hover:text-emerald-200">
-                Holder
+              <div>
+                <div className="text-xs font-bold text-emerald-300 group-hover:text-emerald-200 flex items-center justify-between">
+                  <span>Holder</span>
+                  <ArrowRight className="w-3 h-3 text-emerald-400 opacity-60 group-hover:opacity-100 transform group-hover:translate-x-0.5 transition-all" />
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                  Customer View
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-                Customer View
+              <div className="text-[9px] font-mono text-emerald-400/80 font-bold mt-2 pt-1 border-t border-slate-800/80">
+                Log In &rarr;
               </div>
             </button>
 
@@ -108,13 +118,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
               type="button"
               onClick={() => quickLogin('auditor@ledgerline.io', 'Auditor@12345!')}
               disabled={loading}
-              className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-cyan-950/60 border border-slate-800 hover:border-cyan-500/50 text-left transition group"
+              className="p-3 rounded-xl bg-slate-900/90 hover:bg-cyan-950/70 border border-slate-800 hover:border-cyan-500/60 text-left transition-all duration-200 group shadow-sm flex flex-col justify-between"
             >
-              <div className="text-xs font-bold text-cyan-300 group-hover:text-cyan-200">
-                Auditor
+              <div>
+                <div className="text-xs font-bold text-cyan-300 group-hover:text-cyan-200 flex items-center justify-between">
+                  <span>Auditor</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400 opacity-60 group-hover:opacity-100 transform group-hover:translate-x-0.5 transition-all" />
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                  Verify Invariants
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-                Verify Invariants
+              <div className="text-[9px] font-mono text-cyan-400/80 font-bold mt-2 pt-1 border-t border-slate-800/80">
+                Log In &rarr;
               </div>
             </button>
 
@@ -122,13 +138,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
               type="button"
               onClick={() => quickLogin('admin@ledgerline.io', 'Admin@12345!')}
               disabled={loading}
-              className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-indigo-950/60 border border-slate-800 hover:border-indigo-500/50 text-left transition group"
+              className="p-3 rounded-xl bg-slate-900/90 hover:bg-indigo-950/70 border border-slate-800 hover:border-indigo-500/60 text-left transition-all duration-200 group shadow-sm flex flex-col justify-between"
             >
-              <div className="text-xs font-bold text-indigo-300 group-hover:text-indigo-200">
-                Admin
+              <div>
+                <div className="text-xs font-bold text-indigo-300 group-hover:text-indigo-200 flex items-center justify-between">
+                  <span>Admin</span>
+                  <ArrowRight className="w-3 h-3 text-indigo-400 opacity-60 group-hover:opacity-100 transform group-hover:translate-x-0.5 transition-all" />
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                  Superuser
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-                System Superuser
+              <div className="text-[9px] font-mono text-indigo-400/80 font-bold mt-2 pt-1 border-t border-slate-800/80">
+                Log In &rarr;
               </div>
             </button>
           </div>
@@ -139,7 +161,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
             <div className="w-full border-t border-slate-800" />
           </div>
           <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-widest">
-            <span className="bg-[#080c16] px-3 text-slate-500">Or Manual Authentication</span>
+            <span className="bg-[#080c16] px-3 text-slate-500">Or Type Email &amp; Password Manually</span>
           </div>
         </div>
 
