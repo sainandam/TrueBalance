@@ -160,8 +160,14 @@ npm run dev
 
 ## 6. Interactive Testing & Demonstrator Walkthrough
 
-### Scenario A: Concurrency Protection (50 Parallel Withdrawals)
-Run the automated test proving zero-overdraft concurrency safety:
+### Scenario A: Interactive Concurrency Lab (UI & Terminal)
+1. In the Web UI, open the **⚡ Concurrency Lab** tab.
+2. Select any target vault account (e.g. `ACC-DEMO-1001`).
+3. Click **"Fire 10 Parallel Overdraft Requests"**:
+   - The UI immediately dispatches 10 simultaneous asynchronous `fetch` threads via `Promise.all`.
+   - Watch the thread telemetry grid illuminate with individual latency measurements, unique UUID idempotency keys, and HTTP status codes (`HTTP 200` vs `HTTP 422 Insufficient Funds`).
+   - Observe the live verification summary proving initial balance minus total settled amount equals final balance, with zero overdraft and zero negative balances.
+4. Or run the terminal automated test proving 50-worker zero-overdraft concurrency safety:
 ```bash
 cd backend
 python -m pytest tests/test_concurrency.py -k test_50_concurrent_withdrawals_overdraft_prevention -v

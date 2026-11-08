@@ -74,3 +74,4 @@ class AccountStatementResponse(BaseModel):
     entries: List[AccountStatementItem]
     refusal_attempts: List[AttemptStatementItem]
     generated_at: datetime
+

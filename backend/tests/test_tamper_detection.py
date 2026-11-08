@@ -180,3 +180,4 @@ def test_tamper_detection_account_balance_table_drift():
         )
         db.commit()
         db.close()
+

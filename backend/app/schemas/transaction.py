@@ -46,3 +46,4 @@ class TransactionResponse(BaseModel):
     target_balance_paise: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+

@@ -188,3 +188,4 @@ export const api = {
     return request<{ status: string; database: string }>('/api/v1/health/ready');
   },
 };
+

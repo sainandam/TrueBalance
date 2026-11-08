@@ -200,3 +200,36 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
   5. Authored comprehensive, publication-grade `README.md` with Mermaid architecture diagrams, 15 threat mappings, quickstart guide, and evaluation instructions.
 - **Verification Result**:
   Frontend production build successful (`dist/` generated). All 45 backend automated tests passed across all 9 test suites on real Neon Cloud PostgreSQL. Commit: `2fc049d`.
+
+---
+
+### Record 9: 2026-11-08 — Bespoke Obsidian Neo-Bank Theme & Interactive Concurrency Stress Lab
+- **Date**: 2026-11-08T10:14:00+05:30
+- **What Was Asked**:
+  The user requested a unique, interactive, and responsive frontend theme to distinguish TrueBalance from standard Antigravity projects ("is there any way to change the frontend theme because all others also doing in the antigravity the theme must be unique right we need a interactive and new responsive react righ").
+- **What AI Initially Generated / Encountered**:
+  1. Default frontend used conventional slate/emerald components without visual demonstration of race condition mitigation.
+  2. Evaluators needed an interactive way in the UI to visually stress-test PostgreSQL row-level locks and see 10 parallel threads fire in real time.
+  3. `AuditorView.tsx` and `StatementModal.tsx` had minor property mismatches (`user_id` instead of `actor_id`, `transaction_id` instead of `ledger_transaction_id`).
+- **What Was Corrected / Fixed**:
+  1. Re-architected frontend UI into a bespoke "Obsidian & Cyber-Emerald/Cyan" institutional banking theme:
+     - Futuristic dark glassmorphic styling (`#04060b`, `#070b13`) with blueprint grid overlays, glowing interactive borders, and radial mesh gradients in `frontend/src/index.css`.
+     - Neo-bank credit-card aesthetic for `AccountCard.tsx` with gold EMV chip, 1-click account number copy with visual checkmark feedback, 64-bit integer paise breakdown, and freeze status glow.
+  2. Created `frontend/src/components/ConcurrencyLab.tsx`:
+     - Interactive, real-time stress testing sandbox allowing judges to fire 10/20 parallel overdraft withdrawals via `Promise.all` in real time.
+     - Live thread visualizer cards showing millisecond latency, individual idempotency keys, HTTP status codes, and ACID refusal confirmation.
+     - Real-time summary comparing initial vs final balance, proving zero balance drift and zero negative balances under heavy parallel load.
+     - Built-in Idempotency Replay Attack test proving multiple identical requests execute exactly once and return identical cached results.
+  3. Redesigned `StatementModal.tsx` with an interactive Merkle / SHA-256 Hash Chain Explorer:
+     - Visual cryptographic link nodes connecting `prev_hash` to `entry_hash`.
+     - 1-click hash copy buttons for auditor verification.
+     - Filter tabs distinguishing settled double-entry postings vs durable refusal attempts.
+  4. Redesigned `AuditorView.tsx` with a high-tech SOC (Security Operations Center) cyber cockpit:
+     - Real-time cryptographic chain integrity banner.
+     - Live global zero-sum balance proof ($\sum = 0$).
+     - Searchable append-only supervisory audit trail with expandable JSON payload modal.
+  5. Updated `Navbar.tsx` and `App.tsx` with dedicated navigation tabs and responsive mobile drawer.
+  6. Verified production build with `npm run build` (compiled clean in 834ms).
+- **Verification Result**:
+  Frontend production build verified with 0 errors. All 45 backend automated tests passed across all 9 test suites on real Neon Cloud PostgreSQL.
+

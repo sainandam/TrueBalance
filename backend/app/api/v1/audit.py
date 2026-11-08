@@ -77,3 +77,4 @@ def get_audit_logs(
 ):
     """Supervisory endpoint: Inspect append-only audit trail."""
     return AuditService.get_audit_logs(db, current_user, limit=limit, action=action)
+

@@ -12,6 +12,12 @@ import {
   AlertOctagon,
   Search,
   Filter,
+  Eye,
+  FileCode,
+  Shield,
+  Activity,
+  Check,
+  Radio,
 } from 'lucide-react';
 
 export const AuditorView: React.FC = () => {
@@ -57,96 +63,126 @@ export const AuditorView: React.FC = () => {
     return (
       l.action.toLowerCase().includes(term) ||
       (l.description && l.description.toLowerCase().includes(term)) ||
-      (l.target_type && l.target_type.toLowerCase().includes(term))
+      (l.target_type && l.target_type.toLowerCase().includes(term)) ||
+      (l.actor_id && l.actor_id.toLowerCase().includes(term))
     );
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fadeIn">
       {/* Cockpit Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="text-xs uppercase font-extrabold tracking-widest text-emerald-400">
-              AUDIT & GOVERNANCE COCKPIT
-            </span>
-          </div>
-          <h2 className="text-2xl font-bold text-white mt-1">Cryptographic Ledger Verification</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Real-time mathematical validation of SHA-256 hash chains and zero-sum double-entry invariants.
-          </p>
-        </div>
+      <div className="relative overflow-hidden p-6 sm:p-8 bg-[#070b13] border border-emerald-950/80 rounded-3xl shadow-2xl">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <button
-          onClick={runVerification}
-          disabled={verifying}
-          className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-2 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${verifying ? 'animate-spin' : ''}`} />
-          <span>{verifying ? 'Recomputing Hashes...' : 'Re-verify Entire Ledger'}</span>
-        </button>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 relative">
+          <div>
+            <div className="flex items-center space-x-2.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-[11px] uppercase font-mono font-black tracking-widest text-emerald-400">
+                AUDITOR &amp; GOVERNANCE COCKPIT &middot; LEVEL 3 DEFENSE
+              </span>
+            </div>
+            <h2 className="text-3xl font-black text-white mt-1 tracking-tight">
+              Cryptographic Ledger Verification
+            </h2>
+            <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+              Real-time mathematical validation of SHA-256 hash chains, zero-sum conservation invariants (<span className="text-emerald-400 font-mono">&sum; amount_paise = 0</span>), and immutable PostgreSQL row security.
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => {
+                runVerification();
+                loadAuditLogs();
+              }}
+              disabled={verifying}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${verifying ? 'animate-spin' : ''}`} />
+              <span>{verifying ? 'Recalculating Hashes...' : 'Re-verify Entire Ledger'}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Verification Results Panel */}
+      {/* Verification KPI Cards */}
       {report && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className={`p-6 rounded-2xl border shadow-xl ${
-            report.is_valid
-              ? 'bg-emerald-950/20 border-emerald-800/60'
-              : 'bg-rose-950/20 border-rose-800/60'
-          }`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            className={`p-6 rounded-2xl border shadow-xl relative overflow-hidden transition-all ${
+              report.is_valid
+                ? 'bg-emerald-950/20 border-emerald-800/60'
+                : 'bg-rose-950/20 border-rose-800/70'
+            }`}
+          >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Overall Integrity</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+                Cryptographic Integrity
+              </span>
               {report.is_valid ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               ) : (
                 <XCircle className="w-5 h-5 text-rose-400" />
               )}
             </div>
-            <div className={`text-2xl font-extrabold tracking-tight ${
-              report.is_valid ? 'text-emerald-400' : 'text-rose-400'
-            }`}>
-              {report.is_valid ? 'VALID & UNBROKEN' : 'TAMPERED / FAILED'}
+            <div
+              className={`text-2xl font-black tracking-tight font-mono ${
+                report.is_valid ? 'text-emerald-400' : 'text-rose-400'
+              }`}
+            >
+              {report.is_valid ? 'VALID & UNBROKEN' : 'TAMPERED / BROKEN'}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
               {report.tampered_entries.length === 0
-                ? 'All SHA-256 hash chains verified'
-                : `${report.tampered_entries.length} anomalies detected`}
+                ? 'All SHA-256 hash chains intact'
+                : `${report.tampered_entries.length} cryptographic anomalies!`}
             </div>
           </div>
 
-          <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+          <div className="p-6 bg-[#070b13] border border-slate-800 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Global Zero-Sum</span>
-              <Database className="w-5 h-5 text-teal-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+                Double-Entry Zero-Sum
+              </span>
+              <Database className="w-5 h-5 text-cyan-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white font-mono">
-              {report.global_sum_paise} <span className="text-sm font-normal text-slate-400">paise</span>
+            <div className="text-2xl font-black text-white font-mono">
+              {report.global_sum_paise}{' '}
+              <span className="text-xs font-normal text-slate-400">paise</span>
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
-              Invariant: <span className="text-emerald-400 font-semibold">&sum; amount_paise = 0</span> ({report.global_sum_is_zero ? 'Preserved' : 'Violated'})
+              Invariant: <span className="text-emerald-400 font-bold">&sum; &Delta;paise = 0</span>{' '}
+              ({report.global_sum_is_zero ? 'Strictly Conserved' : 'VIOLATED!'})
             </div>
           </div>
 
-          <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+          <div className="p-6 bg-[#070b13] border border-slate-800 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Accounts Audited</span>
-              <ShieldCheck className="w-5 h-5 text-blue-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+                Accounts Audited
+              </span>
+              <ShieldCheck className="w-5 h-5 text-teal-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white font-mono">
+            <div className="text-2xl font-black text-white font-mono">
               {report.accounts_verified}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
-              Active accounts verified against balances
+              Active ledger accounts validated
             </div>
           </div>
 
-          <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+          <div className="p-6 bg-[#070b13] border border-slate-800 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Ledger Entries</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+                Total Ledger Nodes
+              </span>
               <Hash className="w-5 h-5 text-indigo-400" />
             </div>
-            <div className="text-2xl font-extrabold text-white font-mono">
+            <div className="text-2xl font-black text-white font-mono">
               {report.total_entries}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
@@ -156,7 +192,7 @@ export const AuditorView: React.FC = () => {
         </div>
       )}
 
-      {/* Tampered Entries Breakdown (if any) */}
+      {/* Tampered Entries Alert (if any anomaly detected) */}
       {report && report.tampered_entries.length > 0 && (
         <div className="bg-rose-950/20 border border-rose-800/80 rounded-2xl p-6 shadow-2xl">
           <div className="flex items-center space-x-3 mb-4">
@@ -194,12 +230,19 @@ export const AuditorView: React.FC = () => {
         </div>
       )}
 
-      {/* Supervisory Audit Logs Trail */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      {/* Supervisory Immutable Audit Trail */}
+      <div className="bg-[#070b13] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h3 className="text-lg font-bold text-white">Immutable Audit Trail</h3>
-            <p className="text-xs text-slate-400">Append-only audit events logged by database and security service.</p>
+            <div className="flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-lg font-bold text-white tracking-tight">
+                Supervisory Audit Trail
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Append-only audit events logged by database triggers and security middleware.
+            </p>
           </div>
 
           <div className="relative">
@@ -208,53 +251,64 @@ export const AuditorView: React.FC = () => {
               type="text"
               value={logFilter}
               onChange={(e) => setLogFilter(e.target.value)}
-              placeholder="Search action or description..."
-              className="pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500 w-full sm:w-64"
+              placeholder="Search action or target..."
+              className="pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 w-full sm:w-72"
             />
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto rounded-xl border border-slate-800/80">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-800 text-slate-400 uppercase font-semibold sticky top-0 bg-slate-900">
+            <thead className="border-b border-slate-800 text-slate-400 uppercase font-mono sticky top-0 bg-[#090d16] z-10">
               <tr>
-                <th className="py-2.5 px-3">Timestamp</th>
-                <th className="py-2.5 px-3">Action</th>
-                <th className="py-2.5 px-3">Target</th>
-                <th className="py-2.5 px-3">Description</th>
-                <th className="py-2.5 px-3 text-right">Details</th>
+                <th className="py-3 px-3.5">Timestamp</th>
+                <th className="py-3 px-3.5">Action Event</th>
+                <th className="py-3 px-3.5">Target Entity</th>
+                <th className="py-3 px-3.5">Description</th>
+                <th className="py-3 px-3.5 text-right">Payload</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+            <tbody className="divide-y divide-slate-800/60 text-slate-300 font-sans">
               {loadingLogs ? (
-                <tr><td colSpan={5} className="py-8 text-center text-slate-500">Loading audit records...</td></tr>
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
+                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    Fetching immutable audit logs...
+                  </td>
+                </tr>
               ) : filteredLogs.length === 0 ? (
-                <tr><td colSpan={5} className="py-8 text-center text-slate-500">No matching audit events found.</td></tr>
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
+                    No matching audit events found.
+                  </td>
+                </tr>
               ) : (
                 filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                  <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-2.5 px-3.5 font-mono text-[11px] text-slate-400 whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </td>
-                    <td className="py-2.5 px-3">
-                      <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/60">
+                    <td className="py-2.5 px-3.5 font-mono">
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
                         {log.action}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-400">
+                    <td className="py-2.5 px-3.5 font-mono text-slate-400 text-[11px]">
                       {log.target_type ? `${log.target_type}:${log.target_id?.slice(0, 8)}...` : '-'}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-200">
+                    <td className="py-2.5 px-3.5 text-slate-200 text-xs">
                       {log.description || '-'}
                     </td>
-                    <td className="py-2.5 px-3 text-right">
-                      {log.details && (
+                    <td className="py-2.5 px-3.5 text-right">
+                      {log.details ? (
                         <button
                           onClick={() => setSelectedLog(log)}
-                          className="text-[11px] text-teal-400 hover:underline font-mono"
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-mono transition"
                         >
                           View JSON
                         </button>
+                      ) : (
+                        <span className="text-slate-600 font-mono text-[10px]">-</span>
                       )}
                     </td>
                   </tr>
@@ -265,24 +319,42 @@ export const AuditorView: React.FC = () => {
         </div>
       </div>
 
-      {/* JSON Details Modal */}
+      {/* Log Details JSON Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-bold text-white font-mono">
-                Audit Event: {selectedLog.action}
-              </h4>
+        <div className="fixed inset-0 bg-[#03060c]/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#090d16] border border-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2">
+                <FileCode className="w-5 h-5 text-emerald-400" />
+                <h4 className="text-base font-bold text-white font-mono">Audit Record Payload</h4>
+              </div>
               <button
                 onClick={() => setSelectedLog(null)}
-                className="text-slate-400 hover:text-white"
+                className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition"
               >
                 ✕
               </button>
             </div>
-            <pre className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto max-h-96">
-              {JSON.stringify(selectedLog.details, null, 2)}
-            </pre>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-mono">Action</span>
+                  <span className="font-mono text-emerald-400 font-bold">{selectedLog.action}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-mono">Target</span>
+                  <span className="font-mono text-slate-300">{selectedLog.target_type || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-mono mb-1">Raw JSON Payload</span>
+                <pre className="bg-[#04070e] p-3 rounded-xl border border-slate-800/80 text-[11px] font-mono text-emerald-300 max-h-60 overflow-auto">
+                  {JSON.stringify(selectedLog.details, null, 2)}
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       )}

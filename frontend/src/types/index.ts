@@ -96,3 +96,4 @@ export interface AuditLog {
   details?: Record<string, any> | null;
   created_at: string;
 }
+

@@ -297,3 +297,4 @@ def test_deterministic_lock_order_cross_transfers_no_deadlock():
     final_a = client.get(f"/api/v1/accounts/{acc_a['id']}", headers={"Authorization": f"Bearer {token_a}"}).json()
     final_b = client.get(f"/api/v1/accounts/{acc_b['id']}", headers={"Authorization": f"Bearer {token_b}"}).json()
     assert final_a["balance_paise"] + final_b["balance_paise"] == 2000000
+

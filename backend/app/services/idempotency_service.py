@@ -140,3 +140,4 @@ class IdempotencyService:
         key_obj.status = "refused"
         key_obj.response_body = {"detail": refusal_detail}
         db.flush()
+
