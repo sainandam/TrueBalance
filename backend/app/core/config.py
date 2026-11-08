@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     database_url: str
     migration_database_url: str
+    session_ttl_hours: int = 24
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

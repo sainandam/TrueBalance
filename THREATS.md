@@ -27,5 +27,50 @@ This document tracks security threats, attack vectors, defensive architectures, 
   1. Database CheckConstraint `ck_accounts_overdraft`: `balance_paise >= -overdraft_limit_paise`.
   2. Database CheckConstraint `ck_accounts_overdraft_nonnegative`: `overdraft_limit_paise >= 0`.
   3. Database CheckConstraint `ck_ledger_entries_nonzero_amount`: `amount_paise <> 0`.
-- **Automated Verification Test**: Verified via migration `e6acf3cc1d11` and covered in concurrency test suites.
-- **Remaining Accepted Risk**: None at the database layer; invalid updates are rejected by PostgreSQL kernel.
+- **Automated Verification Test**: Enforced at PostgreSQL engine level via migration `e6acf3cc1d11` and tested in financial transaction test suites.
+- **Remaining Accepted Risk**: None at the database layer; invalid updates are rejected by the PostgreSQL kernel.
+
+---
+
+### Threat 3: Credential Theft & Rainbow Table / GPU Cracking
+- **Category**: Authentication Security
+- **Threat Description**: Attackers obtain the database user dump or intercept authentication requests to reverse passwords using precomputed rainbow tables or GPU cracking rigs.
+- **Attack Vector**: Offline dictionary or brute-force attack against database password hashes.
+- **Engineering Defense**:
+  1. Argon2id (RFC 9106 recommended winner of Password Hashing Competition) with memory-hardness (`memory_cost=65536` / 64MB, `time_cost=3`, `parallelism=4`).
+  2. Argon2id resists GPU/ASIC parallelization attacks and side-channel timing attacks.
+  3. API response schemas strictly omit password and password hashes.
+- **Automated Verification Test**: `backend/tests/test_auth.py`
+  - `test_user_registration_success` (verifies passwords never leak in responses)
+  - `test_user_login_invalid_password_fails` (verifies strict verification)
+- **Remaining Accepted Risk**: Compromise of user client endpoint. Mitigated by strong client-side password policies and rate limiting.
+
+---
+
+### Threat 4: Session Hijacking & Database Compromise Token Reconstruction
+- **Category**: Session Security
+- **Threat Description**: An attacker inspects the `user_sessions` database table to steal user tokens and impersonate administrators or holders.
+- **Attack Vector**: Using database read access to impersonate active user sessions.
+- **Engineering Defense**:
+  1. The client receives a 256-bit URL-safe cryptographically secure random token (`secrets.token_urlsafe(32)`).
+  2. The server only stores the SHA-256 one-way hash of the token (`token_hash`) in the database.
+  3. Even with a full database dump, the attacker cannot reverse the hash to acquire the bearer token.
+  4. Instant session revocation: `/api/v1/auth/logout` sets `revoked_at = NOW()`, immediately invalidating the session.
+- **Automated Verification Test**: `backend/tests/test_auth.py`
+  - `test_user_logout_revokes_session` (PASSED)
+  - `test_user_me_unauthenticated_fails` (PASSED)
+- **Remaining Accepted Risk**: Man-in-the-middle on unencrypted networks; mitigated by enforcing HTTPS/TLS in production.
+
+---
+
+### Threat 5: Privilege Escalation via Unauthorized Role Access
+- **Category**: Authorization / RBAC
+- **Threat Description**: A regular account holder or unauthenticated user attempts to access administrative functions (e.g. freezing accounts, altering limits) or auditor-only inspection logs.
+- **Attack Vector**: Calling admin/auditor endpoints directly with a holder session token.
+- **Engineering Defense**:
+  1. Server-side dependency injection with `require_roles('admin')` and `require_roles('auditor')`.
+  2. Roles are verified dynamically against active database user state on every request, independent of client claims.
+  3. Unauthorized attempts return HTTP 403 Forbidden with security refusal details.
+- **Automated Verification Test**: `backend/tests/test_auth.py`
+  - `test_rbac_admin_and_holder_permissions` (PASSED: Holder and Auditor cannot access Admin-only endpoints).
+- **Remaining Accepted Risk**: Insider threats with legitimate admin credentials; audited via append-only `audit_logs`.
