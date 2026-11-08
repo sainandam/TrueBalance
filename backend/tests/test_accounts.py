@@ -275,3 +275,4 @@ def test_admin_freeze_and_unfreeze_account():
     )
     assert res_unfreeze.status_code == 200
     assert res_unfreeze.json()["status"] == "active"
+

@@ -117,3 +117,34 @@ This document tracks security threats, attack vectors, defensive architectures, 
   - `test_non_owner_cannot_add_members` (PASSED)
   - `test_add_account_member_and_delegated_access` (PASSED)
 - **Remaining Accepted Risk**: An account owner intentionally inviting an untrusted party; mitigated by owner accountability.
+
+---
+
+### Threat 9: Deadlock in Bi-Directional Concurrent Transfers
+- **Category**: Concurrency / Deadlock Vulnerability
+- **Threat Description**: Two concurrent requests attempting transfers between the same two accounts in opposite directions (Request 1 transfers A -> B while Request 2 simultaneously transfers B -> A). In a naive implementation, Request 1 acquires lock on A and waits for lock on B, while Request 2 acquires lock on B and waits for lock on A, causing a classic circular wait deadlock (`DeadlockDetected`) and aborting transactions.
+- **Attack / Failure Vector**: Rapid bi-directional customer transfers causing database lock contention, deadlocks, and transaction aborts.
+- **Engineering Defense**:
+  1. Deterministic Lexicographical Lock Ordering: `first_id, second_id = sorted([source_acc.id, target_acc.id])`.
+  2. Both transactions acquire `SELECT ... FOR UPDATE` locks on the accounts in the exact same global lexicographical order regardless of transfer direction.
+  3. Circular lock dependencies are mathematically impossible, completely eliminating deadlocks without relying on retries.
+- **Automated Verification Test**: `backend/tests/test_financial_engine.py`
+  - `test_deterministic_lock_order_cross_transfers_no_deadlock` (PASSED: 10 parallel cross-transfers across threads execute with 100% success and zero deadlocks).
+- **Remaining Accepted Risk**: High-frequency lock contention on a single celebrity account. Mitigated by low-latency transaction scopes.
+
+---
+
+### Threat 10: Money Creation or Destruction During Multi-Leg Transfers
+- **Category**: Financial Integrity / Double-Entry Invariant
+- **Threat Description**: System failure, partial commit, or rogue business logic debits an account without an equal credit, applies floating-point rounding errors, or fails to balance transaction legs, violating the fundamental law of money conservation.
+- **Attack / Failure Vector**: Exploiting fractional currency conversions, unbonded partial legs, or single-entry updates.
+- **Engineering Defense**:
+  1. Strict Zero-Sum Invariant ($\sum \text{amount\_paise} = 0$): `LedgerService.post_double_entry()` verifies that the sum of all posting amounts strictly equals 0 before persisting. Any unbalanced batch raises `UnbalancedLedgerError` and immediately aborts.
+  2. Atomic PostgreSQL Transactions: Both debit and credit `ledger_entries` and balance updates commit in a single ACID transaction block.
+  3. Strict Integer Paise: All values are stored strictly as 64-bit integer paise (`BigInteger`), eliminating all IEEE 754 floating-point inaccuracies.
+  4. Cryptographic Hash Chain: Each ledger entry computes `SHA-256(prev_hash + entry_id + account_id + amount_paise + created_at)`, creating a tamper-evident audit chain.
+- **Automated Verification Test**: `backend/tests/test_financial_engine.py`
+  - `test_deposit_success_and_zero_sum_invariant` (PASSED: Zero-sum invariant verified on deposit)
+  - `test_withdrawal_success_and_hash_chain` (PASSED: Hash chain linkage and zero-sum verified)
+  - `test_transfer_success_and_money_conservation` (PASSED: Combined account balance strictly conserved)
+- **Remaining Accepted Risk**: None at the ledger layer; invariant is enforced mathematically and atomically.

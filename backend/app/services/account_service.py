@@ -301,3 +301,4 @@ class AccountService:
         db.refresh(account)
 
         return AccountResponse.model_validate(account)
+

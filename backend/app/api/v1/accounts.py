@@ -102,3 +102,4 @@ def update_account_status(
 ):
     """Admin-only lifecycle modification (e.g. freezing an account during investigations)."""
     return AccountService.update_account_status(db, admin_user, account_id, req)
+

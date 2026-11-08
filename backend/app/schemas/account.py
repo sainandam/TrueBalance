@@ -52,3 +52,4 @@ class AccountMemberResponse(BaseModel):
 class AccountStatusUpdateRequest(BaseModel):
     status: str = Field(..., pattern="^(active|frozen|closed)$")
     reason: Optional[str] = Field(None, max_length=255)
+

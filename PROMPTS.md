@@ -61,3 +61,30 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
   4. Authored automated test suite `backend/tests/test_accounts.py` containing 9 comprehensive tests for creation, IDOR defense, multi-user member delegations, and account freezing.
 - **Verification Result**:
   All 9 tests in `test_accounts.py` passed with 100% pass rate. Total passing tests across project: 23/23 tests.
+
+---
+
+### Record 4: 2026-11-08 — Module 4 Financial Engine, Double-Entry Invariants & Deadlock-Free Transfers
+- **Date**: 2026-11-08T08:18:00+05:30
+- **What Was Asked**:
+  Implement Module 4: Financial Engine & Double-Entry Ledger. Must implement deposits, withdrawals, and internal transfers enforcing zero-sum money conservation ($\sum \text{amount\_paise} = 0$), SHA-256 hash chaining, row-level locking, deterministic lock ordering to prevent cross-transfer deadlocks, and durable transaction attempt recording for all accepted and refused requests.
+- **What AI Initially Generated / Encountered**:
+  1. Standard two-phase transfer locking can result in circular wait deadlocks when two users concurrently transfer money to each other (A -> B and B -> A) due to random locking order.
+  2. Deprecated `status.HTTP_422_UNPROCESSABLE_ENTITY` generated Starlette deprecation warnings in newer Starlette/FastAPI versions.
+  3. External clearinghouse account (`SYS-WORLD-001`) needed to act as the counterparty for deposits and withdrawals to preserve the double-entry accounting model across all transaction types.
+- **What Was Corrected / Fixed**:
+  1. Created `backend/app/schemas/transaction.py` specifying strict BigInteger integer paise models for deposits, withdrawals, and transfers.
+  2. Implemented `LedgerService` in `backend/app/services/ledger_service.py`:
+     - Enforces zero-sum invariant: sum of debits and credits must equal zero.
+     - Computes tamper-evident SHA-256 hash chains (`entry_hash`, `prev_hash`) per account.
+     - Atomically updates account balances in concert with ledger entries.
+  3. Implemented `TransactionService` in `backend/app/services/transaction_service.py`:
+     - Deposit: Debits `SYS-WORLD-001`, credits customer account.
+     - Withdrawal: Debits customer account, credits `SYS-WORLD-001`. Enforces `balance + overdraft >= amount`.
+     - Internal Transfer: Enforces distinct source/target accounts, active account statuses, and caller permissions.
+     - Implemented Deterministic Lexicographical Lock Ordering (`sorted([source_id, target_id])` with `with_for_update()`) completely eliminating cross-transfer deadlocks.
+     - Durable attempt tracking: records all accepted and refused transactions in `transaction_attempts` table.
+  4. Created `backend/app/api/v1/transactions.py` and mounted router in `main.py`.
+  5. Authored comprehensive test suite `backend/tests/test_financial_engine.py` with 8 tests, including a multi-threaded parallel cross-transfer deadlock stress test.
+- **Verification Result**:
+  All 31 tests passed across the full test suite (`test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: (tracked below).
