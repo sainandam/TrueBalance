@@ -23,3 +23,4 @@ def calculate_session_expiry(hours: int | None = None) -> datetime:
     """Calculate the UTC expiration timestamp for a new session."""
     ttl = hours if hours is not None else settings.session_ttl_hours
     return datetime.now(timezone.utc) + timedelta(hours=ttl)
+

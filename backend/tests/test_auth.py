@@ -182,3 +182,4 @@ def test_rbac_admin_and_holder_permissions():
     )
     assert res_auditor.status_code == 403
     assert "not authorized" in res_auditor.json()["detail"]
+

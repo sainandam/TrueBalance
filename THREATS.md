@@ -74,3 +74,46 @@ This document tracks security threats, attack vectors, defensive architectures, 
 - **Automated Verification Test**: `backend/tests/test_auth.py`
   - `test_rbac_admin_and_holder_permissions` (PASSED: Holder and Auditor cannot access Admin-only endpoints).
 - **Remaining Accepted Risk**: Insider threats with legitimate admin credentials; audited via append-only `audit_logs`.
+
+---
+
+### Threat 6: Insecure Direct Object Reference (IDOR) on Financial Accounts
+- **Category**: Access Control / IDOR
+- **Threat Description**: An authenticated user attempts to access, inspect, or modify another customer's financial account by manipulating UUID parameters in API requests.
+- **Attack Vector**: Attacker calls `GET /api/v1/accounts/{target_account_id}` with their own valid session token.
+- **Engineering Defense**:
+  1. The service layer verifies the caller's membership in `account_members` for the specific account.
+  2. Listing accounts via `GET /api/v1/accounts` automatically filters by `account_members.user_id == current_user.id` for regular holders.
+  3. Unauthorized access attempts trigger an immediate `IDOR_ACCESS_DENIED` entry in `audit_logs` and return HTTP 403 Forbidden.
+- **Automated Verification Test**: `backend/tests/test_accounts.py`
+  - `test_list_accounts_idor_isolation` (PASSED: User A cannot see User B's accounts in listings)
+  - `test_direct_object_reference_forbidden_idor` (PASSED: User B direct GET on User A's UUID returns 403 Forbidden)
+- **Remaining Accepted Risk**: Legitimate shared account access; controlled by granular permissions (`can_view`, `can_transfer`).
+
+---
+
+### Threat 7: Unauthorized Overdraft Granting & Self-Credit Escalation
+- **Category**: Financial Integrity / Fraud Prevention
+- **Threat Description**: A rogue holder attempts to grant themselves an overdraft limit during account creation to allow negative balances and siphon funds.
+- **Attack Vector**: Attacker submits `POST /api/v1/accounts` with `overdraft_limit_paise > 0`.
+- **Engineering Defense**:
+  1. Server-side validation strictly prohibits non-administrators from assigning an `overdraft_limit_paise > 0`, returning HTTP 403 Forbidden.
+  2. Only users with role `admin` can set overdraft limits on customer accounts.
+- **Automated Verification Test**: `backend/tests/test_accounts.py`
+  - `test_non_admin_cannot_grant_overdraft` (PASSED)
+  - `test_admin_can_create_account_with_overdraft` (PASSED)
+- **Remaining Accepted Risk**: Malicious administrator granting unauthorized limits; mitigated by mandatory audit logging on account creation.
+
+---
+
+### Threat 8: Unauthorized Multi-User Account Member Escalation
+- **Category**: Access Control
+- **Threat Description**: A secondary account viewer or operator on a shared business account attempts to add additional members or escalate their own privileges to owner.
+- **Attack Vector**: Calling `POST /api/v1/accounts/{id}/members` without being the account Owner.
+- **Engineering Defense**:
+  1. The service layer verifies that the caller has `member_role == 'owner'` (or is system `admin`) before modifying membership.
+  2. Non-owners receive HTTP 403 Forbidden.
+- **Automated Verification Test**: `backend/tests/test_accounts.py`
+  - `test_non_owner_cannot_add_members` (PASSED)
+  - `test_add_account_member_and_delegated_access` (PASSED)
+- **Remaining Accepted Risk**: An account owner intentionally inviting an untrusted party; mitigated by owner accountability.

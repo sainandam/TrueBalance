@@ -158,3 +158,4 @@ class AuthService:
             )
             db.add(audit)
             db.commit()
+

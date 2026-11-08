@@ -90,3 +90,4 @@ def admin_only_endpoint(admin_user: User = Depends(require_roles("admin"))):
 def auditor_only_endpoint(auditor_user: User = Depends(require_roles("auditor"))):
     """Demonstrates RBAC: Accessible only by users with 'auditor' role."""
     return MessageResponse(message=f"Welcome Auditor {auditor_user.full_name}!")
+

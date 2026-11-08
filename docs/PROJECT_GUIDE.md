@@ -139,3 +139,4 @@ Run these from the workspace root `C:\Users\Saikiran\snovays`:
   Push-Location backend; & ".\.venv\Scripts\python.exe" -m uvicorn app.main:app --reload --port 8000; Pop-Location
   ```
   Then visit Swagger UI in your browser at: **`http://localhost:8000/docs`**
+
