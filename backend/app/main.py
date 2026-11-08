@@ -33,6 +33,7 @@ app.include_router(transactions_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
 
 
+# Serve compiled React frontend in standalone / production mode if dist exists
 @app.get("/")
 def root():
     return {
@@ -40,3 +41,19 @@ def root():
         "message": "Secure Financial Platform API",
         "status": "running",
     }
+
+
+# Serve compiled React frontend in standalone / production mode under /app
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if (frontend_dist / "index.html").exists():
+    if (frontend_dist / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+
+    @app.get("/app")
+    @app.get("/app/{full_path:path}")
+    def serve_spa(full_path: str = ""):
+        return FileResponse(frontend_dist / "index.html")

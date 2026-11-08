@@ -168,4 +168,35 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
   2. `test_tamper_detection_hash_chain_break`: Forges `prev_hash` pointers in SQL. Proves that the verification engine flags `Broken hash chain` / `Orphaned or disconnected entry` and sets `is_valid: False`.
   3. `test_tamper_detection_account_balance_table_drift`: Modifies `accounts.balance_paise` directly in SQL without corresponding ledger entries. Proves that the verification engine flags `Account balance drift` between table balance and ledger sums.
 - **Verification Result**:
-  All 45 tests passed across all 9 test suites (`test_tamper_detection.py`, `test_audit_verification.py`, `test_accounts.py`, `test_auth.py`, `test_concurrency.py`, `test_db_immutability.py`, `test_financial_engine.py`, `test_health.py`, `test_idempotency.py`). Commit: `0857a76`.
+  All 45 tests passed across all 9 test suites (`test_tamper_detection.py`, `test_audit_verification.py`, `test_accounts.py`, `test_auth.py`, `test_concurrency.py`, `test_db_immutability.py`, `test_financial_engine.py`, `test_health.py`, `test_idempotency.py`). Commit: `12ac7ed`.
+
+---
+
+### Record 8: 2026-11-08 — Module 8 React + TypeScript Frontend Application & Live Demonstrator Dashboard
+- **Date**: 2026-11-08T09:51:00+05:30
+- **What Was Asked**:
+  Implement Module 8: React + TypeScript Frontend Application & Live Demonstrator Dashboard (P0/P1 — 10 Marks Engineering Quality, 10 Marks Documentation & Demo). Must build an enterprise-grade FinTech UI with:
+  1. Role-based experience for Admin, Auditor, and Account Holder with 1-click instant demo sign-in for seed credentials.
+  2. Account Cards displaying balances in ₹ (converted from integer paise), account numbers, and status.
+  3. Action Modals for Deposits, Withdrawals, and Transfers with automatic `Idempotency-Key` generation and reason tracking.
+  4. Interactive Statement Viewer combining settled double-entry postings and prominent durable refusal badges (`INSUFFICIENT_FUNDS`), displaying SHA-256 hash chains (`entry_hash` & `prev_hash`).
+  5. Auditor Cockpit with 1-click Cryptographic Ledger Verification (`VALID & UNBROKEN`), Global Zero-Sum balance proof ($\sum = 0$), tampered entries breakdown, and live search/filter Audit Trail feed.
+  6. Comprehensive `README.md` documentation, architecture diagrams, and testing scripts.
+- **What AI Initially Generated / Encountered**:
+  1. `src/main.tsx` side-effect import of `./index.css` failed TypeScript compilation with `error TS2882: Cannot find module or type declarations for side-effect import of './index.css'` because `src/vite-env.d.ts` was missing.
+  2. Serving static frontend assets at the root route `/` overrode the JSON API dictionary expected by `test_health.py::test_root`, causing a JSON decode error.
+- **What Was Corrected / Fixed**:
+  1. Configured `@tailwindcss/vite` in `frontend/vite.config.ts`, added modern Tailwind CSS styling in `src/index.css`, installed `lucide-react`, and created `src/vite-env.d.ts`.
+  2. Implemented modular React components in `frontend/src/components/`:
+     - `Navbar.tsx`: Live Neon PostgreSQL health indicator, role badges, user profile, and session termination.
+     - `AuthModal.tsx`: Dual-mode login/register with 1-click Quick Login buttons for pre-seeded Admin, Auditor, and Holder accounts.
+     - `AccountCard.tsx`: Balance cards with ₹ formatting, freeze indicators, and quick action buttons.
+     - `TransactionModal.tsx`: Atomic double-entry execution modal with client-side paise conversion and cryptographic UUID `Idempotency-Key` generation.
+     - `StatementModal.tsx`: Combined chronological ledger with credit/debit indicators, durable refusal alerts, SHA-256 fingerprint provenance, and 1-click single-account cryptographic verify.
+     - `AuditorView.tsx`: System-wide audit cockpit with 1-click hash recomputation, zero-sum meter, and searchable audit trail with expandable JSON details.
+     - `CreateAccountModal.tsx`: Account creation with optional overdraft configuration for admins.
+  3. In `backend/app/main.py`, preserved `@app.get("/")` JSON API response for health probes and mounted the compiled SPA under `/app`, supporting both developer hot-reload via Vite and standalone full-stack serving.
+  4. Executed `npm run build` in `frontend/`, verifying strict TypeScript compilation and production Vite bundling (`dist/index.html`, `dist/assets/index.css`, `dist/assets/index.js`) in 1.29s.
+  5. Authored comprehensive, publication-grade `README.md` with Mermaid architecture diagrams, 15 threat mappings, quickstart guide, and evaluation instructions.
+- **Verification Result**:
+  Frontend production build successful (`dist/` generated). All 45 backend automated tests passed across all 9 test suites on real Neon Cloud PostgreSQL. Commit: pending.
