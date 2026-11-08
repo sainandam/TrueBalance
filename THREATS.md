@@ -209,9 +209,12 @@ This document tracks security threats, attack vectors, defensive architectures, 
   1. Immutable PL/pgSQL database triggers (`prevent_ledger_entry_mutation`, `prevent_ledger_transaction_mutation`, `prevent_audit_log_mutation`) that reject any `UPDATE` or `DELETE` statement at the database kernel layer.
   2. Cryptographic SHA-256 Hash Chaining: Each `LedgerEntry` commits a cryptographic fingerprint `entry_hash = SHA256(id:tx_id:account_id:entry_num:amount:balance:prev_hash)` and points to the immediate predecessor `prev_hash`.
   3. `AuditService.verify_ledger_integrity()` continuously recomputes the cryptographic pointer chain, tests for forks, detects cyclic loops or orphaned entries, recomputes running balances step-by-step, reconciles against `accounts.balance_paise` and `accounts.last_entry_hash`, and validates global double-entry zero-sum conservation ($\sum = 0$).
-- **Automated Verification Test**: `backend/tests/test_audit_verification.py`
+- **Automated Verification Test**: `backend/tests/test_audit_verification.py` & `backend/tests/test_tamper_detection.py`
   - `test_full_ledger_verification_untampered` (PASSED: Complete system-wide ledger verification confirms `is_valid == True`, `global_sum_paise == 0`, and 0 tampered entries)
   - `test_single_account_verification` (PASSED: Per-account cryptographic verification validates chain continuity and balance projection)
+  - `test_tamper_detection_amount_manipulation` (PASSED: Proves that SQL manipulation of `amount_paise` immediately trips SHA-256 fingerprint mismatch, arithmetic mismatch, and balance drift alarms)
+  - `test_tamper_detection_hash_chain_break` (PASSED: Proves that forged `prev_hash` pointers immediately trip broken hash chain alarms)
+  - `test_tamper_detection_account_balance_table_drift` (PASSED: Proves that direct SQL balance manipulation without matching ledger entries immediately trips account balance drift alarms)
 - **Remaining Accepted Risk**: Direct manipulation of offline backups. Mitigated by continuous hash chain audit reports published to external tamper-evident audit logs.
 
 ---
