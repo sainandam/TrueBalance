@@ -198,3 +198,34 @@ This document tracks security threats, attack vectors, defensive architectures, 
   - `test_50_concurrent_withdrawals_overdraft_prevention` (PASSED: Exactly 10 succeed, exactly 40 fail, final balance is ₹0, 40 durable refusal attempts logged in DB)
   - `test_concurrent_interleaved_deposits_and_withdrawals` (PASSED: 10 interleaved concurrent deposits/withdrawals maintain exact balance)
 - **Remaining Accepted Risk**: High lock contention during burst traffic. Mitigated by direct PostgreSQL connections and low transaction duration.
+
+---
+
+### Threat 14: Silent Ledger Tampering & Hash-Chain Invalidation
+- **Category**: Cryptographic Auditability & Tamper Detection
+- **Threat Description**: A database administrator, rogue insider, or attacker with direct database access attempts to silently modify ledger amounts, delete historic transactions, inject fraudulent entries, or manipulate account balances directly in SQL, bypassing application-level checks.
+- **Attack Vector**: Direct SQL execution attempting to change `amount_paise`, drop rows, or alter balances.
+- **Engineering Defense**:
+  1. Immutable PL/pgSQL database triggers (`prevent_ledger_entry_mutation`, `prevent_ledger_transaction_mutation`, `prevent_audit_log_mutation`) that reject any `UPDATE` or `DELETE` statement at the database kernel layer.
+  2. Cryptographic SHA-256 Hash Chaining: Each `LedgerEntry` commits a cryptographic fingerprint `entry_hash = SHA256(id:tx_id:account_id:entry_num:amount:balance:prev_hash)` and points to the immediate predecessor `prev_hash`.
+  3. `AuditService.verify_ledger_integrity()` continuously recomputes the cryptographic pointer chain, tests for forks, detects cyclic loops or orphaned entries, recomputes running balances step-by-step, reconciles against `accounts.balance_paise` and `accounts.last_entry_hash`, and validates global double-entry zero-sum conservation ($\sum = 0$).
+- **Automated Verification Test**: `backend/tests/test_audit_verification.py`
+  - `test_full_ledger_verification_untampered` (PASSED: Complete system-wide ledger verification confirms `is_valid == True`, `global_sum_paise == 0`, and 0 tampered entries)
+  - `test_single_account_verification` (PASSED: Per-account cryptographic verification validates chain continuity and balance projection)
+- **Remaining Accepted Risk**: Direct manipulation of offline backups. Mitigated by continuous hash chain audit reports published to external tamper-evident audit logs.
+
+---
+
+### Threat 15: Financial Statement Snooping / Unauthorized Ledger Inspection (IDOR)
+- **Category**: Authorization / Information Disclosure (IDOR)
+- **Threat Description**: An unprivileged account holder probes `/api/v1/audit/statements/{account_id}` with UUIDs of other customers' accounts to inspect their financial transaction history, balances, and durable refusal attempts.
+- **Attack Vector**: Submitting HTTP `GET /api/v1/audit/statements/<victim_account_uuid>` using an active session token belonging to another customer.
+- **Engineering Defense**:
+  1. IDOR Authorization Barrier: `AuditService.get_account_statement()` checks caller identity against `accounts` and `account_members` tables.
+  2. Access is granted ONLY if the caller has the `admin` or `auditor` role, or is an explicit member with `can_view=True`.
+  3. Unauthorized attempts are rejected with HTTP 403 Forbidden and logged as security breach events in `audit_logs` (`STATEMENT_VIEW_IDOR_BLOCKED`).
+- **Automated Verification Test**: `backend/tests/test_audit_verification.py`
+  - `test_account_statement_returns_entries_and_refusals` (PASSED: Valid member views both accepted ledger entries and durable refusal records)
+  - `test_statement_idor_defense` (PASSED: Cross-user statement requests rejected with HTTP 403 Forbidden and logged)
+  - `test_audit_logs_rbac` (PASSED: Regular holders forbidden HTTP 403 from inspecting system-wide audit logs; admins and auditors allowed)
+- **Remaining Accepted Risk**: Authorized members leaking downloaded statement PDFs. Mitigated by session tracking and audit logging of statement views.

@@ -119,3 +119,34 @@ Genuine dated records of AI-assisted design, human review, defect corrections, a
      - 10 interleaved concurrent deposits and withdrawals verified for zero balance drift.
 - **Verification Result**:
   All 37 tests passed across all 7 test suites (`test_concurrency.py`, `test_idempotency.py`, `test_financial_engine.py`, `test_accounts.py`, `test_auth.py`, `test_db_immutability.py`, `test_health.py`). Commit: `305a1a0`.
+
+---
+
+### Record 6: 2026-11-08 — Module 6 Audit Trail, Refusals & Cryptographic Verification Engine
+- **Date**: 2026-11-08T09:40:00+05:30
+- **What Was Asked**:
+  Implement Module 6: Audit Trail, Refusals & Integrity Verification Engine (P0/P1 — 15 Marks Integrity, 15 Marks Functionality). Must implement:
+  1. Cryptographic ledger verification endpoints (`GET /api/v1/audit/verify` and `GET /api/v1/audit/verify/{account_id}`) verifying SHA-256 hash chains, running balance arithmetic, account balance reconciliation, and global zero-sum conservation.
+  2. Account transaction statements (`GET /api/v1/audit/statements/{account_id}`) combining both accepted double-entry postings and durable refusal attempts in a single chronological stream with strict IDOR protection.
+  3. Supervisory audit inspection (`GET /api/v1/audit/logs`) restricted to Admins and Auditors.
+- **What AI Initially Generated / Encountered**:
+  1. `AuditService.verify_ledger_integrity` ordered entries by `created_at` timestamp. Because PostgreSQL sets `now()` to the start of the transaction block (`transaction_timestamp()`), sub-millisecond concurrent transactions queued for locks evaluated `now()` slightly out-of-order relative to lock acquisition time, producing perceived chain breaks when ordered by timestamp alone.
+  2. `test_db_immutability.py` in Module 1 committed mock ledger entries with `'mock_hash_entry_1'` and unbalanced amounts into the database, which violated the cryptographic hash chain and the global zero-sum invariant ($\sum \text{amount\_paise} = 0$).
+  3. `AuditLog.details` JSON serialization threw `TypeError: Object of type Decimal is not JSON serializable` because SQLAlchemy `func.sum()` returned a `Decimal`.
+  4. PostgreSQL transaction abort state in `test_db_immutability.py` prevented subsequent statements from running in the same transaction block without `SAVEPOINT`.
+- **What Was Corrected / Fixed**:
+  1. Tip Hash Pointer Architecture: Added `last_entry_hash` column to `accounts` table via Alembic migration `9a2c1eece936_add_last_entry_hash_to_accounts.py`. In `LedgerService.post_double_entry`, when an account is locked with `with_for_update()`, `prev_hash` is read directly from `account.last_entry_hash` and updated atomically upon entry insertion. This guarantees strictly linear chaining with zero forks under heavy concurrency without relying on clocks.
+  2. Graph Traversal Integrity Engine: In `AuditService.verify_ledger_integrity`, reconstructed the entry chain by traversing `prev_hash -> entry_hash` pointers from genesis (`prev_hash is None`) to tip. Detects:
+     - Forks (multiple entries referencing the same previous hash)
+     - Cyclic loops in the ledger
+     - Orphaned or disconnected entries
+     - Cryptographic SHA-256 fingerprint tampering
+     - Balance projection arithmetic discrepancies
+     - Account balance drift (`accounts.balance_paise != sum(entries)`)
+     - Tip hash drift (`accounts.last_entry_hash != tip.entry_hash`)
+     - Global zero-sum invariant violation ($\sum \text{amount\_paise} \neq 0$)
+  3. Account Statement Aggregation: In `AuditService.get_account_statement()`, combined posted ledger entries and durable refusal records (`transaction_attempts`) sorted chronologically, with strict member/ownership IDOR verification.
+  4. Cleaned up mock entries and refactored `test_db_immutability.py` to use `db_conn.begin_nested()` (savepoints) and transaction rollback to avoid database test pollution.
+  5. Authored comprehensive test suite in `backend/tests/test_audit_verification.py` (5 tests).
+- **Verification Result**:
+  All 42 tests passed across all 8 test suites (`test_audit_verification.py`, `test_accounts.py`, `test_auth.py`, `test_concurrency.py`, `test_db_immutability.py`, `test_financial_engine.py`, `test_health.py`, `test_idempotency.py`). Commit: pending.

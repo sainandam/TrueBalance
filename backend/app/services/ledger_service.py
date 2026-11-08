@@ -82,8 +82,10 @@ class LedgerService:
             if amount_paise == 0:
                 raise ValueError("Ledger entry amount cannot be zero.")
 
-            last_entry = LedgerService.get_last_entry(db, account.id)
-            prev_hash = last_entry.entry_hash if last_entry else None
+            prev_hash = account.last_entry_hash
+            if prev_hash is None:
+                last_entry = LedgerService.get_last_entry(db, account.id)
+                prev_hash = last_entry.entry_hash if last_entry else None
 
             # Projected new running balance
             new_running_balance = account.balance_paise + amount_paise
@@ -111,8 +113,9 @@ class LedgerService:
             db.add(entry)
             created_entries.append(entry)
 
-            # Update account projected balance
+            # Update account projected balance and tip hash pointer
             account.balance_paise = new_running_balance
+            account.last_entry_hash = entry_hash
 
         db.flush()
         return tx, created_entries
