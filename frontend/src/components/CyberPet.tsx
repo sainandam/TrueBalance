@@ -1,9 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Zap, Shield, ArrowDown, Bot, Heart } from 'lucide-react';
-
-interface CyberPetProps {
-  onTipClick?: (tipIndex: number) => void;
-}
+import React, { useState, useEffect, useRef } from 'react';
+import { Bot, Sparkles } from 'lucide-react';
 
 const TIPS = [
   '👋 Hi Judge! Click any card below for 1-Click Instant Demo Login — no typing required!',
@@ -13,27 +9,59 @@ const TIPS = [
   '🔍 The Auditor Cockpit mathematically validates SHA-256 hash chains in real time.',
 ];
 
-export const CyberPet: React.FC<CyberPetProps> = () => {
+// Display duration per sentence: strictly 5 seconds (5000ms)
+const DISPLAY_DURATION_MS = 5000;
+
+export const CyberPet: React.FC = () => {
   const [tipIndex, setTipIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [isHappy, setIsHappy] = useState(false);
+  const [fadeState, setFadeState] = useState<'in' | 'out'>('in');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-cycle tips every 7 seconds
+  const startTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      // Begin smooth fade-out
+      setFadeState('out');
+      setTimeout(() => {
+        setTipIndex((prev) => (prev + 1) % TIPS.length);
+        setFadeState('in');
+      }, 300);
+    }, DISPLAY_DURATION_MS);
+  };
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTipIndex((prev) => (prev + 1) % TIPS.length);
-    }, 7000);
-    return () => clearInterval(timer);
-  }, []);
+    // Only run auto-cycle timer if user is not hovering over the pet or bubble
+    if (!isHovered) {
+      startTimer();
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isHovered, tipIndex]);
 
   const handleClick = () => {
     setIsHappy(true);
-    setTipIndex((prev) => (prev + 1) % TIPS.length);
-    setTimeout(() => setIsHappy(false), 900);
+    setFadeState('out');
+    setTimeout(() => {
+      setTipIndex((prev) => (prev + 1) % TIPS.length);
+      setFadeState('in');
+      setIsHappy(false);
+    }, 250);
+    // Restart full 5-second duration on manual click
+    startTimer();
   };
 
   return (
-    <div className="relative mb-3 flex items-end justify-center space-x-3 select-none">
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="relative mb-3 flex items-end justify-center space-x-3 select-none"
+    >
       {/* Animated Speech Bubble */}
       <div
         onClick={handleClick}
@@ -42,18 +70,41 @@ export const CyberPet: React.FC<CyberPetProps> = () => {
         {/* Glowing badge */}
         <div className="flex items-center justify-between text-[10px] font-mono font-bold text-emerald-400 mb-1">
           <span className="flex items-center space-x-1">
-            <Bot className="w-3 h-3 text-cyan-400" />
+            <Bot className="w-3.5 h-3.5 text-cyan-400" />
             <span className="tracking-wider uppercase">TRUEBOT &middot; DEMO GUIDE</span>
           </span>
           <span className="text-[9px] text-slate-400 group-hover:text-emerald-300 font-sans">
-            (click me!)
+            {isHovered ? '⏸ Paused' : '(click to skip)'}
           </span>
         </div>
 
-        {/* Speech Text */}
-        <p className="text-xs text-slate-200 font-medium leading-relaxed">
-          {TIPS[tipIndex]}
-        </p>
+        {/* Speech Text with smooth fade transition */}
+        <div className="min-h-[44px] flex items-center">
+          <p
+            className={`text-xs text-slate-200 font-medium leading-relaxed transition-opacity duration-300 ${
+              fadeState === 'in' ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {TIPS[tipIndex]}
+          </p>
+        </div>
+
+        {/* 5-Second Sentence Progress Bar & Dots */}
+        <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-800/80">
+          <div className="flex space-x-1">
+            {TIPS.map((_, idx) => (
+              <span
+                key={idx}
+                className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                  idx === tipIndex ? 'bg-emerald-400 scale-125' : 'bg-slate-700'
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-[9px] font-mono text-slate-500">
+            5s per tip {isHovered ? '(hovered)' : ''}
+          </span>
+        </div>
 
         {/* Speech Bubble Arrow pointing to the pet */}
         <div className="absolute -bottom-2 right-6 w-3 h-3 bg-slate-900 border-r border-b border-emerald-500/40 transform rotate-45" />
@@ -62,8 +113,6 @@ export const CyberPet: React.FC<CyberPetProps> = () => {
       {/* Cyber Pet Robot Character */}
       <div
         onClick={handleClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         className="relative cursor-pointer group flex flex-col items-center"
         title="I am TrueBot! Click me for banking engine tips!"
       >
